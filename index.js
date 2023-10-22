@@ -22,12 +22,10 @@ app.use(morgan(':method :url :status :res[content-length] - :response-time ms :b
 
 app.use(express.static('dist'))
 
-app.get('/api/persons', (req, res) => {
+app.get('/api/persons', (req, res, next) => {
   Contacts.find({}).then(result => {
     res.json(result)
-  }).catch(error => {
-    console.log(error)
-  })
+  }).catch(error => next(error))
 })
 
 app.get('/info', (req, res) => {
@@ -52,13 +50,11 @@ app.get('/api/persons/:id', (req, res) => {
   })
 })
  
-app.delete('/api/persons/:id', (req, res) => {
+app.delete('/api/persons/:id', (req, res, next) => {
   const id = req.params.id
   Contacts.findByIdAndDelete(id)
   .then(() => res.status(204).end())
-  .catch(error => {
-    error => next(error)
-  })
+  .catch(error => next(error))
 }) 
 
 
@@ -76,7 +72,8 @@ app.post('/api/persons', (req, res, next) => {
 
   person.save().then(savedPerson => {
     res.json(savedPerson)
-  })
+  }).catch(error => next(error))
+
 })
 
 app.put('/api/persons/:id', (req, res, next) => {
@@ -88,14 +85,19 @@ app.put('/api/persons/:id', (req, res, next) => {
     number: body.number
   }
 
-  Contacts.findByIdAndUpdate(id, person, { new: true })
+  Contacts.findByIdAndUpdate(id, person, { new: true, runValidators: true, context: 'query' })
   .then(updatedPerson => {
     res.json(updatedPerson)
   })
   .catch(error => next(error))
-  
 })
 
+
+const unknownEndpoint = (request, response) => {
+  response.status(404).send({
+    error: "unknown endpoint"
+  });
+};
 
 const errorHandler = (error, req, res, next) => {
   console.error(error.message)
@@ -103,10 +105,15 @@ const errorHandler = (error, req, res, next) => {
   if (error.name === 'CastError') {
     return res.status(400).send({ error: 'malformatted id' })
   }
+  else if (error.name === 'ValidationError') {
+    return res.status(400).json({ error: error.message })
+  }
 
   next(error)
 }
 
+
+app.use(unknownEndpoint);
 app.use(errorHandler)
 
 const PORT = process.env.PORT
